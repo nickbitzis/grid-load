@@ -1,0 +1,27 @@
+# Nightly retrain, as it would run in production: after the day's meter data lands, rerun the backtest gate,
+# retrain on everything metered, and publish the artifacts the 10:00 forecast is served from. Here the data is
+# synthetic, so the job regenerates it; in production the first step would pull yesterday's meter and weather
+# forecast archives.
+name: nightly-retrain
+
+on:
+  schedule:
+    - cron: "0 9 * * *"  # 09:00 UTC, 03:00 or 04:00 in US Central, well before the 10:00 issue
+  workflow_dispatch:
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Backtest gate
+        run: uv run --python 3.12 gridload backtest --gate --markdown "$GITHUB_STEP_SUMMARY"
+      - name: Retrain and forecast
+        run: uv run --python 3.12 gridload --data-dir data/nightly train
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ github.run_id }}
+          path: data/nightly/artifacts.json
+          retention-days: 14

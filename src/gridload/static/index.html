@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grid Load Forecast</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #fcfcfb; --text: #0b0b0b; --muted: #52514e; --faint: #8a8984; --border: #dde2e9; --grid: #eceef1;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --band: rgba(42, 120, 214, 0.18); --flag: #e34948;
+  --good: #11804f; --good-soft: #e3f5ec; --warn: #8a5a00; --warn-soft: #fff4dc; --bad: #b42318; --bad-soft: #fde8e6;
+  --radius: 10px; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111110; --panel: #1a1a19; --text: #f0efec; --muted: #c3c2b7; --faint: #8f8e86; --border: #2e2e2b; --grid: #262624;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --band: rgba(57, 135, 229, 0.26); --flag: #e66767;
+    --good: #4ccb8f; --good-soft: #15302a; --warn: #f3c46b; --warn-soft: #3a2e14; --bad: #ff8a7a; --bad-soft: #3b1d1b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111110; --panel: #1a1a19; --text: #f0efec; --muted: #c3c2b7; --faint: #8f8e86; --border: #2e2e2b; --grid: #262624;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --band: rgba(57, 135, 229, 0.26); --flag: #e66767;
+  --good: #4ccb8f; --good-soft: #15302a; --warn: #f3c46b; --warn-soft: #3a2e14; --bad: #ff8a7a; --bad-soft: #3b1d1b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { overflow-x: hidden; }
+body { margin: 0; background: var(--bg); color: var(--text); font-size: 14px; }
+header { padding: 14px 24px; display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; border-bottom: 1px solid var(--border); background: var(--panel); }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.grow { flex: 1; }
+.muted { color: var(--muted); } .small { font-size: 12px; }
+.picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.picker button { font: inherit; font-weight: 600; color: var(--muted); background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 4px 12px; cursor: pointer; }
+.picker button.on { color: var(--panel); background: var(--text); border-color: var(--text); }
+main { padding: 16px 24px 32px; display: grid; gap: 16px; grid-template-columns: repeat(12, minmax(0, 1fr)); max-width: 1500px; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; min-width: 0; position: relative; }
+.c12 { grid-column: span 12; } .c8 { grid-column: span 8; } .c7 { grid-column: span 7; } .c6 { grid-column: span 6; } .c5 { grid-column: span 5; } .c4 { grid-column: span 4; } .c3 { grid-column: span 3; }
+@media (max-width: 900px) { .c8, .c7, .c6, .c5, .c4, .c3 { grid-column: span 12; } main { padding: 12px 16px; } header { padding: 12px 16px; } }
+@media (min-width: 560px) and (max-width: 900px) { .c3 { grid-column: span 6; } }
+.kpi .v { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.kpi .l { color: var(--muted); margin-top: 2px; }
+.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; border-top: 0; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.best td { font-weight: 650; }
+.chip { font-size: 12px; padding: 2px 9px; border-radius: 10px; background: var(--grid); color: var(--muted); display: inline-block; font-weight: 600; }
+.chip.bad { background: var(--bad-soft); color: var(--bad); } .chip.good { background: var(--good-soft); color: var(--good); } .chip.warn { background: var(--warn-soft); color: var(--warn); }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 12px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.legend i.line { height: 2px; vertical-align: 3px; }
+.tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12); display: none; z-index: 5; white-space: nowrap; }
+.tip b { font-variant-numeric: tabular-nums; }
+.action { font-size: 15px; font-weight: 600; margin: 8px 0 4px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: baseline; }
+p.note { margin: 8px 0 0; line-height: 1.5; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Grid load forecast</h1>
+  <div class="picker" id="zones" role="tablist" aria-label="Zone"></div>
+  <span class="grow"></span>
+  <span class="muted small" id="when"></span>
+</header>
+<main id="main"><div class="panel c12 muted">Loading...</div></main>
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const pct = (v, d = 1) => (v == null ? "" : (v * 100).toFixed(d) + "%");
+const mw = (v) => (v == null ? "" : Math.round(v).toLocaleString("en-US") + " MW");
+const usd = (v) => {
+  const a = Math.abs(v);
+  if (a >= 1e6) return "$" + (v / 1e6).toFixed(1) + "M";
+  if (a >= 1e3) return "$" + Math.round(v / 1e3) + "k";
+  return "$" + Math.round(v);
+};
+const get = (p) => fetch(p).then((r) => { if (!r.ok) throw new Error(p + " " + r.status); return r.json(); });
+const SERIES = { same_hour_last_week: "var(--s1)", similar_days: "var(--s2)", spline_regression: "var(--s3)", gbm: "var(--s4)" };
+const SEASONS = ["winter", "spring", "summer", "fall"];
+const state = { zone: new URLSearchParams(location.search).get("zone") || "system", view: "week" };
+let META, BT, ALERT, ECON;
+
+function ticks(lo, hi, n = 5) {
+  const step0 = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= step0);
+  const out = [];
+  for (let v = Math.floor(lo / step) * step; v < hi + step - 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function svgWidth(el) { return Math.max(300, Math.round(el.getBoundingClientRect().width || 600)); }
+function tipAt(panel, tip, html, x, y) {
+  tip.innerHTML = html; tip.style.display = "block";
+  const pw = panel.clientWidth, tw = tip.offsetWidth;
+  tip.style.left = Math.min(Math.max(4, x + 12), pw - tw - 4) + "px";
+  tip.style.top = y + 12 + "px";
+}
+
+function layout() {
+  $("#main").innerHTML = `
+  <section class="panel c12" id="fc">
+    <div class="row"><h2 id="fc-title">Forecast</h2><span class="grow"></span>
+      <div class="picker" id="views"></div></div>
+    <div class="legend"><span><i class="line" style="background:var(--text)"></i>Actual load</span><span><i class="line" style="background:var(--s1)"></i>P50 forecast</span><span><i style="background:var(--band)"></i>P10 to P90 band</span><span id="flag-leg" hidden><i style="background:var(--flag)"></i>Outage, excluded</span></div>
+    <div id="fc-chart"></div><div class="tip"></div>
+    <p class="note" id="fc-note"></p>
+  </section>
+  <section class="panel c5" id="alert"><h2>Peak alert for tomorrow</h2><div id="alert-body"></div></section>
+  <section class="panel c7" id="curve"><h2>Demand response: cost of each alert cut over the backtest year</h2>
+    <div class="legend"><span><i class="line" style="background:var(--s1)"></i>Realized cost: DR calls plus missed peaks</span></div>
+    <div id="curve-chart"></div><div class="tip"></div><p class="note" id="curve-note"></p></section>
+  <section class="panel c7" id="season"><h2 id="season-title">Day-ahead MAPE by season</h2>
+    <div class="legend" id="season-leg"></div><div id="season-chart"></div><div class="tip"></div></section>
+  <section class="panel c5" id="econ"><h2>Imbalance cost per year, day-ahead system forecast</h2>
+    <div id="econ-chart"></div><div class="tip"></div><p class="note" id="econ-note"></p></section>
+  <section class="panel c12"><h2>Backtest</h2><div class="scroll" id="bt-table"></div><p class="note" id="bt-note"></p></section>
+  <section class="panel c4"><h2>Weather inputs (zones, before reconciliation)</h2><div class="scroll" id="wx-table"></div></section>
+  <section class="panel c4"><h2>Outage handling (day-ahead and week-ahead)</h2><div class="scroll" id="an-table"></div><p class="note" id="an-note"></p></section>
+  <section class="panel c4"><h2>Reconciliation (day-ahead)</h2><div class="scroll" id="rc-table"></div></section>`;
+}
+
+function zonePicker() {
+  $("#zones").innerHTML = META.zones.map((z) => `<button role="tab" data-z="${z.id}" class="${z.id === state.zone ? "on" : ""}">${esc(z.id === "system" ? "System" : z.name)}</button>`).join("");
+  $("#zones").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; state.zone = b.dataset.z; zonePicker(); drawZone(); };
+  const views = [["week", "Next 7 days"], ["heat_wave", "Heat wave replay"], ["winter_storm", "Winter storm replay"]];
+  $("#views").innerHTML = views.map(([k, l]) => `<button data-v="${k}" class="${k === state.view ? "on" : ""}">${l}</button>`).join("");
+  $("#views").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; state.view = b.dataset.v; zonePicker(); drawForecast(); };
+}
+
+async function drawForecast() {
+  const z = state.zone, name = META.zones.find((x) => x.id === z).name;
+  let rows, note;
+  if (state.view === "week") {
+    const f = await get(`/api/forecast?zone=${z}&horizon=week`);
+    rows = [...f.history.map((r) => ({ ts: r.ts, actual: r.actual })), ...f.forecast];
+    $("#fc-title").textContent = `${name}: last 7 days and the forecast issued ${META.issued.replace("T", " ")}`;
+    note = `Metered load through 09:59 today. Forecast weather only. Times are local (US Central) clock hours; DST days have 23 or 25 points.`;
+  } else {
+    const r = await get(`/api/replay?kind=${state.view}&zone=${z}`);
+    rows = r.series;
+    $("#fc-title").textContent = `${name}: ${r.name}, day-ahead forecasts from the backtest`;
+    note = `Each day was forecast at 10:00 the day before, from forecast weather. ` + (state.view === "winter_storm" ? "The North Plains outage (red) is detected, excluded from training and scoring, and imputed for lags." : "");
+  }
+  $("#fc-note").textContent = note;
+  $("#flag-leg").hidden = !rows.some((r) => r.flagged != null);
+  lineChart($("#fc"), $("#fc-chart"), rows);
+}
+
+function lineChart(panel, el, rows) {
+  const W = svgWidth(el), H = W < 600 ? 260 : 320, m = { l: 58, r: 10, t: 8, b: 28 };
+  const vals = rows.flatMap((r) => [r.actual, r.p10, r.p90, r.p50]).filter((v) => v != null);
+  const yt = ticks(Math.min(...vals) * 0.97, Math.max(...vals) * 1.02);
+  const y0 = yt[0], y1 = yt[yt.length - 1];
+  const X = (i) => m.l + (i / (rows.length - 1)) * (W - m.l - m.r);
+  const Y = (v) => H - m.b - ((v - y0) / (y1 - y0)) * (H - m.t - m.b);
+  const path = (key) => { let d = "", pen = false; rows.forEach((r, i) => { if (r[key] == null) { pen = false; return; } d += (pen ? "L" : "M") + X(i).toFixed(1) + "," + Y(r[key]).toFixed(1); pen = true; }); return d; };
+  const bi = rows.map((r, i) => i).filter((i) => rows[i].p10 != null);
+  let band = "";
+  if (bi.length) band = "M" + bi.map((i) => X(i).toFixed(1) + "," + Y(rows[i].p90).toFixed(1)).join("L") + "L" + bi.slice().reverse().map((i) => X(i).toFixed(1) + "," + Y(rows[i].p10).toFixed(1)).join("L") + "Z";
+  const days = rows.map((r, i) => [r.ts, i]).filter(([ts]) => ts.slice(11, 13) === "00");
+  const every = Math.ceil(days.length / (W < 600 ? 4 : 9));
+  const fmtDay = (ts) => new Date(ts.slice(0, 10) + "T12:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Load forecast with P10 to P90 band and actuals">`;
+  yt.forEach((v) => { s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end">${Math.round(v).toLocaleString("en-US")}</text>`; });
+  days.forEach(([ts, i], k) => { s += `<line x1="${X(i)}" x2="${X(i)}" y1="${m.t}" y2="${H - m.b}" stroke="var(--grid)"/>`; if (k % every === 0) s += `<text x="${X(i) + 3}" y="${H - 9}">${fmtDay(ts)}</text>`; });
+  s += `<path d="${band}" fill="var(--band)"/>`;
+  s += `<path d="${path("p50")}" fill="none" stroke="var(--s1)" stroke-width="2"/>`;
+  s += `<path d="${path("actual")}" fill="none" stroke="var(--text)" stroke-width="1.6"/>`;
+  rows.forEach((r, i) => { if (r.flagged != null) s += `<circle cx="${X(i)}" cy="${Y(r.flagged)}" r="2.6" fill="var(--flag)"/>`; });
+  s += `<line id="xh" y1="${m.t}" y2="${H - m.b}" stroke="var(--faint)" stroke-dasharray="3 3" visibility="hidden"/>`;
+  s += `<text x="${m.l + 4}" y="${m.t + 10}" style="font-weight:600">MW</text>`;
+  s += `<rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent" id="hit"/></svg>`;
+  el.innerHTML = s;
+  const svg = $("svg", el), tip = $(".tip", panel), xh = $("#xh", el);
+  const move = (ev) => {
+    const pt = svg.getBoundingClientRect(), sx = ((ev.clientX - pt.left) / pt.width) * W;
+    const i = Math.max(0, Math.min(rows.length - 1, Math.round(((sx - m.l) / (W - m.l - m.r)) * (rows.length - 1))));
+    const r = rows[i]; xh.setAttribute("x1", X(i)); xh.setAttribute("x2", X(i)); xh.setAttribute("visibility", "visible");
+    let h = `<div class="muted">${esc(r.ts.slice(0, 10))} ${esc(r.ts.slice(11, 16))} (UTC${esc(r.ts.slice(19))})</div>`;
+    if (r.actual != null) h += `<div>Actual <b>${mw(r.actual)}</b></div>`;
+    if (r.p50 != null) h += `<div>P50 <b>${mw(r.p50)}</b></div><div>P10 to P90 <b>${mw(r.p10)}</b> to <b>${mw(r.p90)}</b></div>`;
+    if (r.flagged != null) h += `<div style="color:var(--flag)">Outage, excluded</div>`;
+    const pr = panel.getBoundingClientRect();
+    tipAt(panel, tip, h, ev.clientX - pr.left, ev.clientY - pr.top);
+  };
+  $("#hit", el).addEventListener("pointermove", move);
+  $("#hit", el).addEventListener("pointerleave", () => { tip.style.display = "none"; xh.setAttribute("visibility", "hidden"); });
+}
+
+function drawAlert() {
+  const t = ALERT.tomorrow, call = t.call;
+  const chip = call ? `<span class="chip bad">Call DR</span>` : `<span class="chip good">No call</span>`;
+  $("#alert-body").innerHTML = `
+    <div class="row"><div class="kpi"><div class="v">${pct(t.probability, 0)}</div><div class="l">P(system peak > ${mw(ALERT.threshold_mw)})</div></div>
+    <div class="kpi"><div class="v">${mw(t.predicted_peak_mw)}</div><div class="l">P50 peak at ${String(t.peak_hour).padStart(2, "0")}:00, P90 ${mw(t.p90_peak_mw)}</div></div></div>
+    <div class="action">${chip} ${esc(t.action)}</div>
+    <p class="note">Calls when the probability is at least ${pct(t.cut, 0)}, the cut that cost least over the backtest. Break-even with calibrated probabilities is ${usd(ALERT.costs.call_usd)} / ${usd(ALERT.costs.miss_usd)} = ${pct(ALERT.break_even, 1)}. Expected cost tomorrow: call ${usd(t.expected_cost_call)}, no call ${usd(t.expected_cost_no_call)}.</p>
+    <div class="scroll"><table><tr><th>Policy (backtest year)</th><th class="num">Calls</th><th class="num">Precision</th><th class="num">Recall</th><th class="num">Cost</th></tr>
+    ${[["Never call", ALERT.never_call], ["Always call", ALERT.always_call], ["Break-even cut", ALERT.at_break_even], ["Chosen cut " + pct(ALERT.best.cut, 0), ALERT.best]].map(([l, r], k) => `<tr class="${k === 3 ? "best" : ""}"><td>${l}</td><td class="num">${r.calls}</td><td class="num">${pct(r.precision, 0)}</td><td class="num">${pct(r.recall, 0)}</td><td class="num">${usd(r.cost)}</td></tr>`).join("")}
+    </table></div>
+    <p class="note">${ALERT.exceedances} of ${ALERT.days} backtest days peaked above ${mw(ALERT.threshold_mw)}. Brier score ${ALERT.brier.toFixed(3)}.</p>`;
+}
+
+function drawCurve() {
+  const el = $("#curve-chart"), panel = $("#curve"), pts = ALERT.curve;
+  const W = svgWidth(el), H = 230, m = { l: 58, r: 12, t: 10, b: 30 };
+  const yt = ticks(0, Math.max(...pts.map((p) => p.cost)) * 1.05);
+  const X = (c) => m.l + c * (W - m.l - m.r), Y = (v) => H - m.b - (v / yt[yt.length - 1]) * (H - m.t - m.b);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cost by alert cut">`;
+  yt.forEach((v) => { s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end">${usd(v)}</text>`; });
+  [0, 0.2, 0.4, 0.6, 0.8, 1].forEach((c) => { s += `<text x="${X(c)}" y="${H - 10}" text-anchor="middle">${pct(c, 0)}</text>`; });
+  s += `<path d="M${pts.map((p) => X(p.cut).toFixed(1) + "," + Y(p.cost).toFixed(1)).join("L")}" fill="none" stroke="var(--s1)" stroke-width="2"/>`;
+  const b = ALERT.best;
+  s += `<line x1="${X(ALERT.break_even)}" x2="${X(ALERT.break_even)}" y1="${m.t}" y2="${H - m.b}" stroke="var(--faint)" stroke-dasharray="3 3"/>`;
+  s += `<text x="${X(ALERT.break_even) + 4}" y="${m.t + 10}">break-even ${pct(ALERT.break_even, 0)}</text>`;
+  s += `<circle cx="${X(b.cut)}" cy="${Y(b.cost)}" r="5" fill="var(--s1)" stroke="var(--panel)" stroke-width="2"/>`;
+  s += `<text x="${X(b.cut) + 8}" y="${Y(b.cost) + 16}" style="fill:var(--text);font-weight:600">chosen ${pct(b.cut, 0)}: ${usd(b.cost)}</text>`;
+  s += `<line id="cx" y1="${m.t}" y2="${H - m.b}" stroke="var(--faint)" visibility="hidden"/><rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent" class="hit"/></svg>`;
+  el.innerHTML = s;
+  const svg = $("svg", el), tip = $(".tip", panel), cx = $("#cx", el);
+  $(".hit", el).addEventListener("pointermove", (ev) => {
+    const r = svg.getBoundingClientRect(), sx = ((ev.clientX - r.left) / r.width) * W;
+    const c = Math.max(0, Math.min(1, (sx - m.l) / (W - m.l - m.r))), p = pts[Math.round(c * 100)];
+    cx.setAttribute("x1", X(p.cut)); cx.setAttribute("x2", X(p.cut)); cx.setAttribute("visibility", "visible");
+    const pr = panel.getBoundingClientRect();
+    tipAt(panel, tip, `<div class="muted">Call when P >= ${pct(p.cut, 0)}</div><div>Cost <b>${usd(p.cost)}</b></div><div>Precision <b>${pct(p.precision, 0)}</b>, recall <b>${pct(p.recall, 0)}</b></div>`, ev.clientX - pr.left, ev.clientY - pr.top);
+  });
+  $(".hit", el).addEventListener("pointerleave", () => { tip.style.display = "none"; cx.setAttribute("visibility", "hidden"); });
+  $("#curve-note").textContent = `A DR call costs ${usd(ALERT.costs.call_usd)}; a peak above the threshold with no call costs ${usd(ALERT.costs.miss_usd)} in capacity charges. Low cuts call too often, high cuts miss peaks.`;
+}
+
+function legend(el) { el.innerHTML = Object.entries(BT.models).map(([k, n]) => `<span><i style="background:${SERIES[k]}"></i>${esc(n)}</span>`).join(""); }
+
+async function drawSeason() {
+  const z = state.zone, rows = (await get(`/api/backtest?zone=${z}`)).by_season;
+  $("#season-title").textContent = `Day-ahead MAPE by season: ${META.zones.find((x) => x.id === z).name}`;
+  legend($("#season-leg"));
+  const el = $("#season-chart"), panel = $("#season"), models = Object.keys(BT.models);
+  const seasons = SEASONS.filter((s) => rows.some((r) => r.season === s));
+  const W = svgWidth(el), H = 240, m = { l: 44, r: 8, t: 8, b: 26 };
+  const yt = ticks(0, Math.max(...rows.map((r) => r.mape)) * 1.08);
+  const top = yt[yt.length - 1], gw = (W - m.l - m.r) / seasons.length, bw = Math.min(28, (gw - 18) / models.length - 2);
+  const Y = (v) => H - m.b - (v / top) * (H - m.t - m.b);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="MAPE by season and model">`;
+  yt.forEach((v) => { s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end">${pct(v, Number.isInteger(Math.round(v * 1e6) / 1e4) ? 0 : 1)}</text>`; });
+  seasons.forEach((se, si) => {
+    const gx = m.l + si * gw + (gw - models.length * (bw + 2)) / 2;
+    s += `<text x="${m.l + si * gw + gw / 2}" y="${H - 8}" text-anchor="middle">${se}</text>`;
+    models.forEach((mo, mi) => {
+      const r = rows.find((x) => x.season === se && x.model === mo); if (!r) return;
+      const x = gx + mi * (bw + 2), y = Y(r.mape), h = H - m.b - y, rr = Math.min(4, bw / 2, h);
+      s += `<path d="M${x},${H - m.b}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + bw - rr}Q${x + bw},${y} ${x + bw},${y + rr}V${H - m.b}Z" fill="${SERIES[mo]}"/>`;
+      s += `<rect x="${x - 1}" y="${m.t}" width="${bw + 2}" height="${H - m.t - m.b}" fill="transparent" data-tip="${esc(BT.models[mo])}, ${se}: ${pct(r.mape, 2)}"/>`;
+    });
+  });
+  el.innerHTML = s + "</svg>";
+  hoverTips(el, panel);
+}
+
+function hoverTips(el, panel) {
+  const tip = $(".tip", panel);
+  el.querySelectorAll("[data-tip]").forEach((n) => {
+    n.addEventListener("pointermove", (ev) => { const pr = panel.getBoundingClientRect(); tipAt(panel, tip, esc(n.dataset.tip), ev.clientX - pr.left, ev.clientY - pr.top); });
+    n.addEventListener("pointerleave", () => (tip.style.display = "none"));
+  });
+}
+
+function drawEcon() {
+  const el = $("#econ-chart"), panel = $("#econ"), rows = ECON.rows;
+  const W = svgWidth(el), rowH = 46, m = { l: 8, r: 12, t: 4 }, H = rows.length * rowH + 8;
+  const max = Math.max(...rows.map((r) => r.total_usd)), X = (v) => (v / max) * (W - m.l - m.r - 70);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Imbalance cost per year by model">`;
+  rows.forEach((r, i) => {
+    const y = m.t + i * rowH, w = X(r.total_usd), best = r.total_usd === Math.min(...rows.map((x) => x.total_usd));
+    s += `<text x="${m.l}" y="${y + 12}" style="fill:var(--text)${best ? ";font-weight:650" : ""}">${esc(BT.models[r.model])}</text>`;
+    s += `<path d="M${m.l},${y + 18}H${m.l + w - 4}Q${m.l + w},${y + 18} ${m.l + w},${y + 22}V${y + 32}Q${m.l + w},${y + 36} ${m.l + w - 4},${y + 36}H${m.l}Z" fill="${SERIES[r.model]}"/>`;
+    s += `<text x="${m.l + w + 6}" y="${y + 31}" style="fill:var(--text)">${usd(r.total_usd)}</text>`;
+    s += `<rect x="0" y="${y}" width="${W}" height="${rowH}" fill="transparent" data-tip="${esc(BT.models[r.model])}: over-forecast ${usd(r.over_usd)} (${Math.round(r.over_mwh / 1000)}k MWh), under-forecast ${usd(r.under_usd)} (${Math.round(r.under_mwh / 1000)}k MWh)"/>`;
+  });
+  el.innerHTML = s + "</svg>";
+  hoverTips(el, panel);
+  const naive = rows.find((r) => r.model === "same_hour_last_week"), gbm = rows.find((r) => r.model === "gbm");
+  $("#econ-note").textContent = `Over-forecast energy is resold in real time at 70% of the day-ahead price; shortfalls are bought at 1.35x or more when the system is tight. Gradient boosting saves ${usd(naive.total_usd - gbm.total_usd)} a year against same hour last week.`;
+}
+
+function tables() {
+  const rows = BT.main, names = BT.models;
+  let h = `<table><tr><th>Horizon</th><th>Level</th><th>Model</th><th class="num">MAPE</th><th class="num">RMSE</th><th class="num">Peak error</th><th class="num">Pinball</th><th class="num">P10-P90 coverage</th></tr>`;
+  rows.forEach((r) => {
+    h += `<tr class="${r.model === "gbm" ? "best" : ""}"><td>${r.horizon === "day" ? "Day-ahead" : "Week-ahead"}</td><td>${r.level}</td><td>${esc(names[r.model])}</td><td class="num">${pct(r.mape, 2)}</td><td class="num">${mw(r.rmse)}</td><td class="num">${pct(r.peak_error, 2)}</td><td class="num">${pct(r.pinball, 2)}</td><td class="num">${pct(r.coverage, 1)}</td></tr>`;
+  });
+  $("#bt-table").innerHTML = h + "</table>";
+  const g = BT.gate, c = BT.config;
+  $("#bt-note").innerHTML = `${c.test_days} daily issues from ${c.first_issue} to ${c.last_issue}, models refit every ${c.refit_every} days on the previous ${c.train_days}. Pinball is the mean over P10, P50, P90 as a share of mean load. Gate <span class="chip ${g.passed ? "good" : "bad"}">${g.passed ? "passed" : "failed"}</span>: system day-ahead MAPE ${pct(g.gbm_day_mape, 2)} vs ${pct(g.baseline_day_mape, 2)}, coverage ${pct(g.coverage)} in ${pct(g.band[0], 0)} to ${pct(g.band[1], 0)}.`;
+  const wx = BT.ablations.weather || [];
+  $("#wx-table").innerHTML = `<table><tr><th>Variant</th><th class="num">Day</th><th class="num">Week</th></tr>${wx.map((r) => `<tr><td style="white-space:normal">${esc(r.label)}</td><td class="num">${pct(r.day_mape, 2)}</td><td class="num">${pct(r.week_mape, 2)}</td></tr>`).join("")}</table>`;
+  const an = BT.ablations.anomaly;
+  if (an) {
+    const zn = META.zones.find((z) => z.id === an.zone)?.name || an.zone;
+    $("#an-table").innerHTML = `<table><tr><th>Variant</th><th class="num">2 weeks after</th><th class="num">Year</th></tr>${an.rows.map((r) => `<tr><td>${esc(r.label)}</td><td class="num">${pct(r.after_zone_mape, 2)}</td><td class="num">${pct(r.window_zone_mape, 2)}</td></tr>`).join("")}</table>`;
+    $("#an-note").textContent = `MAPE in ${zn}. ${an.flagged_cells} zone-hours flagged: ${META.anomalies.map((a) => `${a.zone} from ${a.start} for ${a.hours} h`).join("; ")}. Left in, the outage teaches the model low load and feeds low lags into the next week.`;
+  }
+  $("#rc-table").innerHTML = `<table><tr><th>Method</th><th class="num">Zones</th><th class="num">System</th><th class="num">Max gap</th></tr>${BT.reconciliation.map((r) => `<tr><td>${esc(r.label)}</td><td class="num">${pct(r.zones_mape, 2)}</td><td class="num">${pct(r.system_mape, 2)}</td><td class="num">${mw(r.max_gap_mw)}</td></tr>`).join("")}</table>`;
+}
+
+function drawZone() {
+  const u = new URL(location); u.searchParams.set("zone", state.zone); history.replaceState(null, "", u);
+  drawForecast(); drawSeason();
+}
+
+async function init() {
+  [META, BT, ALERT, ECON] = await Promise.all([get("/api/zones"), get("/api/backtest"), get("/api/peak-alert"), get("/api/economics")]);
+  $("#title").textContent = `${META.utility}: load forecast`;
+  $("#when").textContent = `Issued ${META.issued.replace("T", " ")} for ${META.tomorrow} onward`;
+  layout(); zonePicker(); drawZone(); drawAlert(); drawCurve(); drawEcon(); tables();
+  let t; addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => { drawForecast(); drawSeason(); drawCurve(); drawEcon(); }, 150); });
+}
+init().catch((e) => { $("#main").innerHTML = `<div class="panel c12">Failed to load: ${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>
